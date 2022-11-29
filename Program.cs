@@ -5,7 +5,7 @@ using OpenTelemetry.Trace;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
 using OpenTelemetry.Logs;
-using OpenTelemetry.Exporter;
+using Serilog;
 
 // Define some important constants to initialize tracing with
 var serviceName = "MyCompany.MyProduct.MyService";
@@ -24,11 +24,7 @@ builder.Services.AddOpenTelemetryTracing(tracerProviderBuilder =>
 {
     tracerProviderBuilder
         .AddConsoleExporter()
-        .AddOtlpExporter(opt =>
-        {
-            opt.Endpoint = new Uri("otel:4318");
-            opt.Protocol = OtlpExportProtocol.HttpProtobuf;
-        })
+        .AddOtlpExporter()
         .AddSource(serviceName)
         .SetResourceBuilder(
             ResourceBuilder.CreateDefault()
@@ -44,11 +40,7 @@ builder.Services.AddOpenTelemetryMetrics(metricProviderBuilder =>
 {
     metricProviderBuilder
         .AddConsoleExporter()
-        .AddOtlpExporter(opt =>
-        {
-            opt.Endpoint = new Uri("otel:4318");
-            opt.Protocol = OtlpExportProtocol.HttpProtobuf;
-        })
+        .AddOtlpExporter()
         .AddMeter(meter.Name)
         .SetResourceBuilder(appResourceBuilder)
         .AddAspNetCoreInstrumentation()
@@ -78,19 +70,15 @@ var MyActivitySource = new ActivitySource(serviceName);
 
 var httpClient = new HttpClient();
 
-using var loggerFactory = LoggerFactory.Create(builder =>
-{
-    builder.AddOpenTelemetry(options =>
-    {
-        options
-        .AddConsoleExporter()
-        .AddOtlpExporter(opt =>
-        {
-            opt.Endpoint = new Uri("otel:4318");
-            opt.Protocol = OtlpExportProtocol.HttpProtobuf;
-        });
-    });
-});
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json")
+    .AddJsonFile($"appsettings.{Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Production"}.json", true)
+    .Build();
+
+Log.Logger = new LoggerConfiguration()
+    .ReadFrom.Configuration(configuration)
+    .CreateLogger();
 
 app.MapGet("/hello", async () =>
 {
@@ -102,9 +90,7 @@ app.MapGet("/hello", async () =>
 
     counter.Add(1);
 
-    var logger = loggerFactory.CreateLogger<Program>();
-
-    logger.LogInformation("Hello from {name} {price}.", "tomato", 2.99);
+    Log.Information("Hello from {name} {price}.", "tomato", 2.99);
 
     var html = await httpClient.GetStringAsync("https://example.com/");
     if (string.IsNullOrWhiteSpace(html))
