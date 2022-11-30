@@ -1,0 +1,71 @@
+version: "3.9"
+services:
+  mimir:
+    image: grafana/mimir:latest
+    command: ["-config.file=/etc/mimir.yml"]
+    ports:
+      - 9009:9009
+    restart: "on-failure"
+    volumes:
+      - ./config/mimir.yml:/etc/mimir.yml
+
+  otel:
+    image: otel/opentelemetry-collector:latest
+    command: ["--config=/etc/otel-collector-config.yml"]
+    depends_on:
+      - "mimir"
+      - "tempo"
+    ports:
+      - "1888:1888" # pprof extension
+      - "8888:8888" # Prometheus metrics exposed by the collector
+      - "8889:8889" # Prometheus exporter metrics
+      - "13133:13133" # health_check extension
+      - "4317:4317" # OTLP gRPC receiver
+      - "4318:4318" # OTLP http receiver
+      - "55679:55679" # zpages extension
+    restart: "on-failure"
+    volumes:
+      - ./config/otel-collector-config.yml:/etc/otel-collector-config.yml
+
+  grafana:
+    image: grafana/grafana-enterprise
+    ports:
+      - "3000:3000"
+    restart: "on-failure"
+
+  tempo:
+    image: grafana/tempo:latest
+    command: ["-config.file=/etc/tempo.yml"]
+    ports:
+      - "14268" # jaeger ingest
+      - "3200" # tempo
+      - "4317" # otlp grpc
+      - "4318" # otlp http
+      - "9411" # zipkin
+    restart: "on-failure"
+    volumes:
+      - ./config/tempo.yml:/etc/tempo.yml
+
+  loki:
+    image: grafana/loki:2.6.1
+    command: -config.file=/etc/loki/loki.yml
+    ports:
+      - "3100:3100"
+    restart: "on-failure"
+    volumes:
+      - ./config/loki.yml:/etc/loki/loki.yml
+
+  # promtail:
+  #   image: grafana/promtail:2.6.1
+  #   volumes:
+  #     - /var/log:/var/log
+  #   command: -config.file=/etc/promtail/config.yml
+
+  telem:
+    build: .
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel:4317
+    image: telem:latest
+    ports:
+      - "5000:80"
+    restart: "on-failure"
